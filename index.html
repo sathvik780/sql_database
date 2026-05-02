@@ -1,0 +1,865 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fraud Monitoring System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+      :root{
+        --bg:#0b1220;
+        --panel:#0f1726;
+        --muted:#9aa4b2;
+        --accent:#1976d2;
+        --safe:#1ec06a;
+        --fraud:#ff6b6b;
+      }
+      html,body{height:100%}
+      body{
+        background:linear-gradient(180deg,var(--bg) 0%, #07101b 100%);
+        color: #e6eef7;
+        font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+        min-height:100vh;
+      }
+      .sidebar{
+        background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.005));
+        border-right:1px solid rgba(255,255,255,0.03);
+        min-height:calc(100vh - 72px);
+      }
+      .card-panel{
+        background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+        border:1px solid rgba(255,255,255,0.04);
+        color:var(--muted);
+      }
+      .form-control, .form-select, .table{
+        background:transparent; color:#e6eef7; border-color:rgba(255,255,255,0.06);
+      }
+      .form-control:focus, .form-select:focus{ box-shadow:0 0 0 .2rem rgba(25,118,210,0.12); border-color:var(--accent) }
+      .btn-primary-custom{ background:var(--accent); border:0; }
+      .btn-primary-custom:hover{ filter:brightness(.95) }
+      .badge-safe{ background:var(--safe); color:#042; }
+      .badge-fraud{ background:var(--fraud); color:#410; }
+      .small-muted{ font-size:.85rem; color:var(--muted) }
+      .nav-link.active{ background: rgba(255,255,255,0.02); border-radius:6px; color:#fff !important; }
+      .table-row-hover tbody tr:hover{ transform:translateY(-3px); background: rgba(255,255,255,0.01); transition: all .12s; }
+      .summary-card{ min-height:88px; }
+      .sticky-left{ position:sticky; top:1rem; }
+      @media (max-width:992px){ .sticky-left{ position:static } .sidebar{ min-height:auto } }
+    </style>
+  </head>
+  <body>
+    <!-- NAVBAR -->
+    <nav class="navbar navbar-dark bg-transparent px-3 py-3 border-bottom" style="border-color:rgba(255,255,255,0.03)">
+      <div class="container-fluid">
+        <div class="d-flex align-items-center gap-3">
+          <i class="bi bi-shield-lock-fill text-info" style="font-size:1.25rem"></i>
+          <div>
+            <div class="h6 mb-0">Fraud Monitoring System</div>
+            <div class="small-muted small">Admin • Monitoring Dashboard</div>
+          </div>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <button id="navRefresh" class="btn btn-sm btn-outline-light"><i class="bi bi-arrow-clockwise"></i> Refresh All</button>
+          <div class="small-muted">Local UI • No auth</div>
+        </div>
+      </div>
+    </nav>
+
+    <!-- LAYOUT -->
+    <main class="container-fluid py-4">
+      <div class="row g-3">
+        <!-- SIDEBAR -->
+        <aside class="col-12 col-lg-3">
+          <div class="card sidebar p-3 sticky-left">
+            <div class="mb-3 d-flex align-items-center gap-2">
+              <i class="bi bi-gear-fill text-info"></i>
+              <div>
+                <strong>Admin</strong>
+                <div class="small-muted">Manage users, accounts & transactions</div>
+              </div>
+            </div>
+
+            <nav class="nav flex-column">
+              <a class="nav-link text-white d-flex justify-content-between align-items-center mb-1 active" href="#" data-page="dashboard">
+                <div><i class="bi bi-speedometer2 me-2"></i> Dashboard</div>
+              </a>
+              <a class="nav-link text-white d-flex justify-content-between align-items-center mb-1" href="#" data-page="users">
+                <div><i class="bi bi-people me-2"></i> Users</div>
+              </a>
+              <a class="nav-link text-white d-flex justify-content-between align-items-center mb-1" href="#" data-page="accounts">
+                <div><i class="bi bi-bank me-2"></i> Accounts</div>
+              </a>
+              <a class="nav-link text-white d-flex justify-content-between align-items-center mb-1" href="#" data-page="transactions">
+                <div><i class="bi bi-currency-exchange me-2"></i> Transactions</div>
+              </a>
+            </nav>
+
+            <hr style="border-color:rgba(255,255,255,0.03)">
+
+            <div class="small-muted small">API Status</div>
+            <div id="apiStatus" class="mt-2 small-muted">Checking...</div>
+            <div class="mt-3">
+              <button id="sidebarRefresh" class="btn btn-sm btn-primary-custom w-100">Check API</button>
+            </div>
+          </div>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <section class="col-12 col-lg-9">
+          <!-- DASHBOARD PAGE -->
+          <div id="page-dashboard" class="page card-panel p-3">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+              <div>
+                <h5 class="mb-0">Dashboard</h5>
+                <div class="small-muted">Realtime overview • GET /dashboard</div>
+              </div>
+              <div class="d-flex gap-2">
+                <button id="dashboardRefresh" class="btn btn-sm btn-outline-light"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+                <button id="dashboardExport" class="btn btn-sm btn-outline-light"><i class="bi bi-download"></i> Export CSV</button>
+
+                <!-- Admin ban control -->
+                <div class="input-group input-group-sm" style="max-width:420px">
+                  <input id="banAccountId" class="form-control form-control-sm" placeholder="Account ID to ban">
+                  <input id="banReason" class="form-control form-control-sm" placeholder="Reason (optional)">
+                  <button id="banAccountBtn" class="btn btn-sm btn-danger">Ban</button>
+                </div>
+
+                <button id="viewBannedBtn" class="btn btn-sm btn-outline-danger"><i class="bi bi-list-ul me-1"></i> View Banned Accounts</button>
+              </div>
+            </div>
+
+            <!-- SUMMARY CARDS -->
+            <div class="row g-3 mb-3">
+              <div class="col-12 col-md-4">
+                <div class="card card-panel p-3 summary-card">
+                  <div class="d-flex justify-content-between">
+                    <div>
+                      <div class="small-muted">Total Transactions</div>
+                      <div id="sumTotal" class="h5 mt-1">—</div>
+                    </div>
+                    <i class="bi bi-receipt text-info" style="font-size:1.5rem"></i>
+                  </div>
+                </div>
+              </div>
+              <div class="col-12 col-md-4">
+                <div class="card card-panel p-3 summary-card">
+                  <div class="d-flex justify-content-between">
+                    <div>
+                      <div class="small-muted">Fraud Detected</div>
+                      <div id="sumFraud" class="h5 mt-1 text-danger">—</div>
+                    </div>
+                    <i class="bi bi-exclamation-circle text-danger" style="font-size:1.5rem"></i>
+                  </div>
+                </div>
+              </div>
+              <div class="col-12 col-md-4">
+                <div class="card card-panel p-3 summary-card">
+                  <div class="d-flex justify-content-between">
+                    <div>
+                      <div class="small-muted">Safe Transactions</div>
+                      <div id="sumSafe" class="h5 mt-1 text-success">—</div>
+                    </div>
+                    <i class="bi bi-check-circle text-success" style="font-size:1.5rem"></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- FILTERS -->
+            <div class="card card-panel p-3 mb-3">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <div class="small-muted">Filters</div>
+                <div class="small-muted">Client-side filters before display</div>
+              </div>
+              <div class="row g-2">
+                <div class="col-12 col-md-4">
+                  <input id="filterUserId" class="form-control" placeholder="User ID (filter)"/>
+                </div>
+                <div class="col-6 col-md-3">
+                  <input id="filterMin" type="number" step="0.01" class="form-control" placeholder="Min amount"/>
+                </div>
+                <div class="col-6 col-md-3">
+                  <input id="filterMax" type="number" step="0.01" class="form-control" placeholder="Max amount"/>
+                </div>
+                <div class="col-6 col-md-2 d-flex align-items-center">
+                  <div class="form-check form-switch w-100">
+                    <input id="filterFraudOnly" class="form-check-input" type="checkbox"/>
+                    <label class="form-check-label small-muted" for="filterFraudOnly">Fraud only</label>
+                  </div>
+                </div>
+                <div class="col-12 d-flex gap-2 pt-2">
+                  <button id="applyFilters" class="btn btn-primary-custom">Apply</button>
+                  <button id="clearFilters" class="btn btn-outline-light">Clear</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- DATA TABLE -->
+            <div class="card card-panel p-3 table-row-hover">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <div class="small-muted">Transactions</div>
+                <div id="dashboardLoader" class="small-muted" style="display:none"><i class="spinner-border spinner-border-sm text-light"></i> Loading...</div>
+              </div>
+              <div class="table-responsive">
+                <table class="table table-borderless align-middle mb-0">
+                  <thead class="small-muted text-muted">
+                    <tr>
+                      <th>User Name</th>
+                      <th>Account ID</th>
+                      <th>Transaction ID</th>
+                      <th>Amount</th>
+                      <th>Status</th>
+                      <th>Fraud Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dashboardTableBody">
+                    <tr><td colspan="6" class="small-muted">No data loaded</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- USERS PAGE -->
+          <div id="page-users" class="page" style="display:none">
+            <div class="card card-panel p-3 mb-3">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <div>
+                  <h5 class="mb-0">Users</h5>
+                  <div class="small-muted">Manage users • POST /user • GET /users</div>
+                </div>
+                <div class="small-muted">Create & list users</div>
+              </div>
+
+              <div class="row g-3">
+                <div class="col-12 col-lg-5">
+                  <div class="card card-panel p-3">
+                    <h6 class="mb-2">Add User</h6>
+                    <form id="formAddUser" class="row g-2">
+                      <div class="col-12"><input id="u_id" class="form-control" placeholder="user id (id)" required></div>
+                      <div class="col-12"><input id="u_name" class="form-control" placeholder="name" required></div>
+                      <div class="col-12"><input id="u_email" type="email" class="form-control" placeholder="email" required></div>
+                      <div class="col-12"><input id="u_phone" class="form-control" placeholder="phone" required></div>
+                      <div class="col-12 d-flex gap-2">
+                        <button class="btn btn-primary-custom" type="submit"><i class="bi bi-person-plus me-1"></i> Add User</button>
+                        <button id="clearUserForm" type="button" class="btn btn-outline-light">Clear</button>
+                      </div>
+                      <div class="col-12"><div id="msgUser" class="mt-2"></div></div>
+                    </form>
+                  </div>
+                </div>
+
+                <div class="col-12 col-lg-7">
+                  <div class="card card-panel p-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                      <div><h6 class="mb-0">Users</h6></div>
+                      <div class="d-flex gap-2">
+                        <input id="searchUsers" class="form-control form-control-sm" placeholder="Search name or email">
+                        <button id="refreshUsers" class="btn btn-sm btn-outline-light"><i class="bi bi-arrow-clockwise"></i></button>
+                      </div>
+                    </div>
+                    <div class="table-responsive">
+                      <table class="table table-borderless align-middle mb-0">
+                        <thead class="small-muted text-muted">
+                          <tr><th>ID</th><th>Name</th><th>Email</th><th>Phone</th><th>Action</th></tr>
+                        </thead>
+                        <tbody id="usersTableBody">
+                          <tr><td colspan="5" class="small-muted">No users loaded</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ACCOUNTS PAGE -->
+          <div id="page-accounts" class="page" style="display:none">
+            <div class="card card-panel p-3 mb-3">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <div>
+                  <h5 class="mb-0">Accounts</h5>
+                  <div class="small-muted">POST /account • GET /accounts</div>
+                </div>
+                <div class="small-muted">Manage accounts</div>
+              </div>
+
+              <div class="row g-3">
+                <div class="col-12 col-lg-5">
+                  <div class="card card-panel p-3">
+                    <h6 class="mb-2">Add Account</h6>
+                    <form id="formAddAccount" class="row g-2">
+                      <div class="col-12"><input id="a_id" class="form-control" placeholder="account id (id)" required></div>
+                      <div class="col-12"><input id="a_user_id" class="form-control" placeholder="user id (user_id)" required></div>
+                      <div class="col-12"><input id="a_balance" type="number" class="form-control" placeholder="balance" required></div>
+                      <div class="col-12">
+                        <select id="a_type" class="form-select">
+                          <option value="checking">checking</option>
+                          <option value="savings">savings</option>
+                        </select>
+                      </div>
+                      <div class="col-12 d-flex gap-2">
+                        <button class="btn btn-primary-custom" type="submit"><i class="bi bi-bank me-1"></i> Add Account</button>
+                        <button id="clearAccountForm" type="button" class="btn btn-outline-light">Clear</button>
+                      </div>
+                      <div class="col-12"><div id="msgAccount" class="mt-2"></div></div>
+                    </form>
+                  </div>
+                </div>
+
+                <div class="col-12 col-lg-7">
+                  <div class="card card-panel p-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                      <div><h6 class="mb-0">Accounts</h6></div>
+                      <div class="d-flex gap-2">
+                        <input id="filterAccountsByUser" class="form-control form-control-sm" placeholder="Filter by user id">
+                        <button id="refreshAccounts" class="btn btn-sm btn-outline-light"><i class="bi bi-arrow-clockwise"></i></button>
+                      </div>
+                    </div>
+                    <div class="table-responsive">
+                      <table class="table table-borderless align-middle mb-0">
+                        <thead class="small-muted text-muted">
+                          <tr><th>Account ID</th><th>User ID</th><th>Balance</th><th>Type</th><th>Action</th></tr>
+                        </thead>
+                        <tbody id="accountsTableBody">
+                          <tr><td colspan="5" class="small-muted">No accounts loaded</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TRANSACTIONS PAGE -->
+          <div id="page-transactions" class="page" style="display:none">
+            <div class="card card-panel p-3 mb-3">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <div><h5 class="mb-0">Transactions</h5><div class="small-muted">POST /transaction • GET /transactions</div></div>
+                <div class="small-muted">Create & review transactions</div>
+              </div>
+
+              <div class="row g-3">
+                <div class="col-12 col-lg-5">
+                  <div class="card card-panel p-3">
+                    <h6 class="mb-2">Add Transaction</h6>
+                    <form id="formAddTransaction" class="row g-2">
+                      <div class="col-12"><input id="t_id" class="form-control" placeholder="transaction id (id)" required></div>
+                      <div class="col-12"><input id="t_sender" class="form-control" placeholder="sender account id (sender)" required></div>
+                      <div class="col-12"><input id="t_receiver" class="form-control" placeholder="receiver account id (receiver)" required></div>
+                      <div class="col-12"><input id="t_amount" type="number" step="0.01" class="form-control" placeholder="amount" required></div>
+                      <div class="col-12 d-flex gap-2">
+                        <button class="btn btn-primary-custom" type="submit"><i class="bi bi-send me-1"></i> Add Transaction</button>
+                        <button id="clearTxForm" type="button" class="btn btn-outline-light">Clear</button>
+                      </div>
+                      <div class="col-12"><div id="msgTransaction" class="mt-2"></div></div>
+                    </form>
+                  </div>
+                </div>
+
+                <div class="col-12 col-lg-7">
+                  <div class="card card-panel p-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                      <div><h6 class="mb-0">Transactions</h6></div>
+                      <div class="d-flex gap-2">
+                        <input id="filterTxUser" class="form-control form-control-sm" placeholder="User id (sender user)" />
+                        <input id="filterTxAccount" class="form-control form-control-sm" placeholder="Account id" />
+                        <button id="refreshTx" class="btn btn-sm btn-outline-light"><i class="bi bi-arrow-clockwise"></i></button>
+                      </div>
+                    </div>
+                    <div class="table-responsive">
+                      <table class="table table-borderless align-middle mb-0">
+                        <thead class="small-muted text-muted">
+                          <tr><th>Transaction ID</th><th>Sender</th><th>Receiver</th><th>Amount</th><th>Status</th><th>Fraud</th></tr>
+                        </thead>
+                        <tbody id="transactionsTableBody">
+                          <tr><td colspan="6" class="small-muted">No transactions loaded</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- BANNED ACCOUNTS PANEL (hidden until used) -->
+          <div id="bannedPanel" class="card card-panel p-3 mt-3" style="display:none">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <div class="small-muted">Banned Accounts</div>
+              <div class="small-muted">Manually banned accounts</div>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-borderless align-middle mb-0">
+                <thead class="small-muted text-muted">
+                  <tr><th>Account ID</th><th>Reason</th><th>Banned At</th><th>Action</th></tr>
+                </thead>
+                <tbody id="bannedTableBody">
+                  <tr><td colspan="4" class="small-muted">No banned accounts</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </section>
+      </div>
+    </main>
+
+    <script>
+      const API = 'http://localhost:3000';
+
+      // -----------------------
+      // Helpers
+      // -----------------------
+      function el(q){ return document.querySelector(q); }
+      function els(q){ return Array.from(document.querySelectorAll(q)); }
+      function showLoader(sel){ el(sel).style.display='inline-block'; }
+      function hideLoader(sel){ el(sel).style.display='none'; }
+      function showMsg(container, text, type='success'){
+        container.innerHTML = `<div class="alert alert-${type} py-1 px-2 mb-0">${text}</div>`;
+      }
+      function clearMsg(container){ container.innerHTML=''; }
+      function safe(s){ if(s===null||s===undefined) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+      function formatMoney(n){ return '$' + Number(n||0).toFixed(2); }
+
+      // -----------------------
+      // Navigation
+      // -----------------------
+      function showPage(name){
+        els('.nav .nav-link').forEach(a=>a.classList.remove('active'));
+        els('[data-page]').forEach(a=>{
+          if(a.dataset.page===name) a.classList.add('active');
+          else a.classList.remove('active');
+        });
+        els('.page').forEach(p=>p.style.display='none');
+        el('#page-' + name).style.display = 'block';
+      }
+      els('[data-page]').forEach(a=>{
+        a.addEventListener('click', e=>{
+          e.preventDefault();
+          const page = a.dataset.page;
+          showPage(page);
+          // load page data lazily
+          if(page==='dashboard') loadDashboard();
+          if(page==='users') loadUsers();
+          if(page==='accounts') loadAccounts();
+          if(page==='transactions') loadTransactions();
+        });
+      });
+
+      // -----------------------
+      // API Status
+      // -----------------------
+      async function checkApi(){
+        const statusEl = el('#apiStatus');
+        statusEl.textContent = 'Checking...';
+        try{
+          const res = await fetch(API + '/dashboard', { method:'GET' });
+          if(res.ok) statusEl.innerHTML = '<span class="text-success">API OK</span>';
+          else statusEl.innerHTML = `<span class="text-danger">API ${res.status}</span>`;
+        }catch(err){
+          statusEl.innerHTML = `<span class="text-danger">Unavailable</span>`;
+        }
+      }
+      el('#sidebarRefresh').addEventListener('click', checkApi);
+      el('#navRefresh').addEventListener('click', ()=>{ loadAll(); });
+
+      // -----------------------
+      // LOAD DASHBOARD
+      // -----------------------
+      let latestDashboardData = [];
+      async function loadDashboard(){
+        const loader = el('#dashboardLoader');
+        const tbody = el('#dashboardTableBody');
+        loader.style.display = 'inline-block';
+        tbody.innerHTML = `<tr><td colspan="6" class="small-muted">Loading...</td></tr>`;
+        try{
+          const res = await fetch(API + '/dashboard');
+          if(!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+          const json = await res.json();
+          latestDashboardData = Array.isArray(json) ? json : [];
+          // summary
+          const total = latestDashboardData.length;
+          const fraudCount = latestDashboardData.filter(r=>(String(r.fraud_status||'').toUpperCase()!=='SAFE' && (r.fraud_status||'')!=='')).length;
+          const safeCount = total - fraudCount;
+          el('#sumTotal').textContent = total;
+          el('#sumFraud').textContent = fraudCount;
+          el('#sumSafe').textContent = safeCount;
+          renderDashboardTable(latestDashboardData);
+        }catch(err){
+          tbody.innerHTML = `<tr><td colspan="6" class="text-danger">Error loading: ${safe(err.message)}</td></tr>`;
+          el('#sumTotal').textContent = '—'; el('#sumFraud').textContent='—'; el('#sumSafe').textContent='—';
+        }finally{ loader.style.display='none'; }
+      }
+
+      function renderDashboardTable(data){
+        const tbody = el('#dashboardTableBody');
+        // apply client filters
+        const ufilter = el('#filterUserId').value.trim().toLowerCase();
+        const min = parseFloat(el('#filterMin').value) || null;
+        const max = parseFloat(el('#filterMax').value) || null;
+        const fraudOnly = el('#filterFraudOnly').checked;
+        const filtered = data.filter(r=>{
+          if(ufilter){
+            if(!(String(r.user_name||'').toLowerCase().includes(ufilter) || String(r.account_id||'').toLowerCase().includes(ufilter))) return false;
+          }
+          const amt = Number(r.amount||0);
+          if(min!==null && !isNaN(min) && amt < min) return false;
+          if(max!==null && !isNaN(max) && amt > max) return false;
+          if(fraudOnly){
+            const f = String(r.fraud_status||'').toUpperCase();
+            if(f==='SAFE' || f==='') return false;
+          }
+          return true;
+        });
+        if(filtered.length===0){
+          tbody.innerHTML = `<tr><td colspan="6" class="small-muted">No matching records</td></tr>`;
+          return;
+        }
+        tbody.innerHTML = filtered.map(r=>{
+          const fraudRaw = r.fraud_status || '';
+          const isSafe = String(fraudRaw).toUpperCase()==='SAFE' || fraudRaw==='';
+
+          const fraudCell = isSafe ? `<span class="badge badge-safe">SAFE</span>` : `<span class="badge badge-fraud">${safe(fraudRaw)}</span>`;
+          const rowStyle = isSafe ? '' : ' style="color:var(--fraud);" ';
+          return `<tr ${rowStyle}>
+            <td>${safe(r.user_name||'')}</td>
+            <td>${safe(r.account_id||'')}</td>
+            <td>${safe(r.transaction_id||'')}</td>
+            <td>${formatMoney(r.amount)}</td>
+            <td>${safe(r.status||'')}</td>
+            <td>${fraudCell}</td>
+          </tr>`;
+        }).join('');
+      }
+
+      // filters
+      el('#applyFilters').addEventListener('click', ()=> renderDashboardTable(latestDashboardData));
+      el('#clearFilters').addEventListener('click', ()=>{
+        el('#filterUserId').value=''; el('#filterMin').value=''; el('#filterMax').value=''; el('#filterFraudOnly').checked=false;
+        renderDashboardTable(latestDashboardData);
+      });
+      el('#dashboardRefresh').addEventListener('click', loadDashboard);
+      el('#dashboardExport').addEventListener('click', ()=> {
+        const rows = latestDashboardData || [];
+        if(rows.length===0) return alert('No data to export');
+        const csv = [
+          ['user_name','account_id','transaction_id','amount','status','fraud_status'],
+          ...rows.map(r=>[r.user_name,r.account_id,r.transaction_id,r.amount,r.status,r.fraud_status])
+        ].map(r=>r.map(c=>`"${String(c||'').replace(/"/g,'""')}"`).join(',')).join('\n');
+        const blob = new Blob([csv], {type:'text/csv'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = 'dashboard.csv'; a.click(); URL.revokeObjectURL(url);
+      });
+
+      // -----------------------
+      // USERS
+      // -----------------------
+      let usersCache = [];
+      async function loadUsers(){
+        const tbody = el('#usersTableBody'); tbody.innerHTML = `<tr><td colspan="5" class="small-muted">Loading...</td></tr>`;
+        try{
+          const res = await fetch(API + '/users');
+          if(!res.ok) throw new Error(`${res.status}`);
+          const json = await res.json();
+          usersCache = Array.isArray(json) ? json : [];
+          renderUsersTable(usersCache);
+        }catch(err){
+          tbody.innerHTML = `<tr><td colspan="5" class="text-danger">Error: ${safe(err.message)}</td></tr>`;
+        }
+      }
+      // helper to check if account is banned (server returns `banned` on accounts)
+      function isAccountBanned(accountId){
+        const a = accountsCache.find(x => String(x.account_id) === String(accountId));
+        if(!a) return false;
+        return Number(a.banned) === 1;
+      }
+
+      // show badge for suspended items in users/accounts render
+      function renderUsersTable(data){
+        const tbody = el('#usersTableBody');
+        const q = el('#searchUsers').value.trim().toLowerCase();
+        const filtered = data.filter(u=> !q || (String(u.name||'').toLowerCase().includes(q) || String(u.email||'').toLowerCase().includes(q)));
+        if(filtered.length===0){ tbody.innerHTML = `<tr><td colspan="5" class="small-muted">No users</td></tr>`; return; }
+        tbody.innerHTML = filtered.map(u=>`<tr>
+          <td>${safe(u.user_id||u.id||'')}</td>
+          <td>${safe(u.name||'')}</td>
+          <td>${safe(u.email||'')}</td>
+          <td>${safe(u.phone||'')}</td>
+          <td><!-- action removed; use dashboard ban control --></td>
+        </tr>`).join('');
+      }
+      el('#searchUsers').addEventListener('input', ()=> renderUsersTable(usersCache));
+      el('#refreshUsers').addEventListener('click', loadUsers);
+
+      // add user
+      el('#formAddUser').addEventListener('submit', async (e)=>{
+        e.preventDefault();
+        const id = el('#u_id').value.trim();
+        const name = el('#u_name').value.trim();
+        const email = el('#u_email').value.trim();
+        const phone = el('#u_phone').value.trim();
+        const msg = el('#msgUser'); clearMsg(msg);
+        if(!id||!name||!email||!phone){ showMsg(msg,'Please fill all fields','danger'); return; }
+        try{
+          const res = await fetch(API + '/user', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ id, name, email, phone }) });
+          if(!res.ok){ const t = await res.text(); showMsg(msg, `Error: ${res.status} ${t}`, 'danger'); return; }
+          showMsg(msg,'User added','success');
+          el('#formAddUser').reset();
+          await loadUsers(); await loadAll();
+        }catch(err){ showMsg(msg,'Network: '+err.message,'danger'); }
+      });
+      el('#clearUserForm').addEventListener('click', ()=>{ el('#formAddUser').reset(); clearMsg(el('#msgUser')); });
+
+      // -----------------------
+      // ACCOUNTS
+      // -----------------------
+      let accountsCache = [];
+      async function loadAccounts(){
+        const tbody = el('#accountsTableBody'); tbody.innerHTML = `<tr><td colspan="5" class="small-muted">Loading...</td></tr>`;
+        try{
+          const res = await fetch(API + '/accounts');
+          if(!res.ok) throw new Error(`${res.status}`);
+          const json = await res.json();
+          accountsCache = Array.isArray(json) ? json : [];
+          renderAccountsTable(accountsCache);
+        }catch(err){
+          tbody.innerHTML = `<tr><td colspan="5" class="text-danger">Error: ${safe(err.message)}</td></tr>`;
+        }
+      }
+      // update renderAccountsTable to exclude banned accounts from the Accounts page
+      function renderAccountsTable(data){
+        const tbody = el('#accountsTableBody');
+        const filter = el('#filterAccountsByUser').value.trim().toLowerCase();
+        // keep accountsCache unchanged (full list) but exclude banned accounts for display
+        const filtered = data.filter(a => {
+          if(filter && String(a.user_id||'').toLowerCase() !== filter) return false;
+          // a.banned from server: 1 means banned — exclude those from the Accounts page list
+          if(Number(a.banned) === 1) return false;
+          return true;
+        });
+        if(filtered.length===0){ tbody.innerHTML = `<tr><td colspan="5" class="small-muted">No accounts</td></tr>`; return; }
+        tbody.innerHTML = filtered.map(a=>`<tr>
+          <td>${safe(a.account_id||a.id||'')}</td>
+          <td>${safe(a.user_id||'')}</td>
+          <td>${formatMoney(a.balance)}</td>
+          <td>${safe(a.account_type||a.type||'')}</td>
+          <td><!-- action removed; use dashboard ban control --></td>
+        </tr>`).join('');
+      }
+      el('#filterAccountsByUser').addEventListener('input', ()=> renderAccountsTable(accountsCache));
+      el('#refreshAccounts').addEventListener('click', loadAccounts);
+
+      // add account
+      el('#formAddAccount').addEventListener('submit', async (e)=>{
+        e.preventDefault();
+        const id = el('#a_id').value.trim();
+        const user_id = el('#a_user_id').value.trim();
+        const balance = parseFloat(el('#a_balance').value) || 0;
+        const type = el('#a_type').value;
+        const msg = el('#msgAccount'); clearMsg(msg);
+        if(!id||!user_id){ showMsg(msg,'id and user_id required','danger'); return; }
+        try{
+          const res = await fetch(API + '/account', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ id, user_id, balance, type }) });
+          if(!res.ok){ const t = await res.text(); showMsg(msg, `Error: ${res.status} ${t}`, 'danger'); return; }
+          showMsg(msg,'Account added','success');
+          el('#formAddAccount').reset();
+          await loadAccounts(); await loadAll();
+        }catch(err){ showMsg(msg,'Network: '+err.message,'danger'); }
+      });
+      el('#clearAccountForm').addEventListener('click', ()=>{ el('#formAddAccount').reset(); clearMsg(el('#msgAccount')); });
+
+      // -----------------------
+      // TRANSACTIONS
+      // -----------------------
+      let transactionsCache = [];
+      async function loadTransactions(){
+        const tbody = el('#transactionsTableBody');
+        tbody.innerHTML = `<tr><td colspan="6" class="small-muted">Loading...</td></tr>`;
+        try{
+          const res = await fetch(API + '/transactions');
+          if(!res.ok){
+            // try to show server response body if available
+            let bodyText = '';
+            try{ bodyText = await res.text(); }catch(e){ bodyText = String(e); }
+            tbody.innerHTML = `<tr><td colspan="6" class="text-danger">Error loading /transactions: ${safe(res.status + ' ' + res.statusText)} ${bodyText ? '- ' + safe(bodyText) : ''}</td></tr>`;
+            return;
+          }
+          const json = await res.json();
+          transactionsCache = Array.isArray(json) ? json : [];
+          renderTransactionsTable(transactionsCache);
+        }catch(err){
+          tbody.innerHTML = `<tr><td colspan="6" class="text-danger">Network error: ${safe(err.message)}</td></tr>`;
+          console.error('loadTransactions error', err);
+        }
+      }
+      function renderTransactionsTable(data){
+        const tbody = el('#transactionsTableBody');
+        const userFilter = el('#filterTxUser').value.trim().toLowerCase();
+        const accountFilter = el('#filterTxAccount').value.trim().toLowerCase();
+        const filtered = data.filter(t=>{
+          if(userFilter && !String(t.user_id||t.sender_user||'').toLowerCase().includes(userFilter) && !String(t.sender||'').toLowerCase().includes(userFilter)) return false;
+          if(accountFilter && !String(t.sender||'').toLowerCase().includes(accountFilter) && !String(t.receiver||'').toLowerCase().includes(accountFilter)) return false;
+          return true;
+        });
+        if(filtered.length===0){ tbody.innerHTML = `<tr><td colspan="6" class="small-muted">No transactions</td></tr>`; return; }
+        tbody.innerHTML = filtered.map(t=>{
+          const fraudRaw = t.fraud_status || t.rule_triggered || '';
+          const isSafe = String(fraudRaw).toUpperCase()==='SAFE' || fraudRaw==='';
+
+          const fraudCell = isSafe ? `<span class="badge badge-safe">SAFE</span>` : `<span class="badge badge-fraud">${safe(fraudRaw)}</span>`;
+          const rowStyle = isSafe ? '' : ' style="color:var(--fraud);" ';
+          return `<tr ${rowStyle}><td>${safe(t.transaction_id||t.id||'')}</td><td>${safe(t.sender||'')}</td><td>${safe(t.receiver||'')}</td><td>${formatMoney(t.amount)}</td><td>${safe(t.status||'')}</td><td>${fraudCell}</td></tr>`;
+        }).join('');
+      }
+      el('#filterTxUser').addEventListener('input', ()=> renderTransactionsTable(transactionsCache));
+      el('#filterTxAccount').addEventListener('input', ()=> renderTransactionsTable(transactionsCache));
+      el('#refreshTx').addEventListener('click', loadTransactions);
+
+      // quick pre-check when user leaves sender/receiver field (use banned check)
+      el('#t_sender').addEventListener('blur', ()=> {
+        const id = el('#t_sender').value.trim();
+        if(!id) return;
+        const msg = el('#msgTransaction');
+        clearMsg(msg);
+        if(isAccountBanned(id)) showMsg(msg, `Sender account ${id} is banned and cannot perform transactions`, 'danger');
+      });
+      el('#t_receiver').addEventListener('blur', ()=> {
+        const id = el('#t_receiver').value.trim();
+        if(!id) return;
+        const msg = el('#msgTransaction');
+        clearMsg(msg);
+        if(isAccountBanned(id)) showMsg(msg, `Receiver account ${id} is banned and cannot receive transactions`, 'danger');
+      });
+
+      // attach single transaction handler (ensures only one)
+      (function attachTransactionHandler(){
+        const form = el('#formAddTransaction');
+        if(!form) return;
+        // replace to remove accidental duplicate listeners
+        form.replaceWith(form.cloneNode(true));
+        const newForm = el('#formAddTransaction');
+        newForm.addEventListener('submit', async (e)=>{
+          e.preventDefault();
+          const id = el('#t_id').value.trim();
+          const sender = el('#t_sender').value.trim();
+          const receiver = el('#t_receiver').value.trim();
+          const amount = parseFloat(el('#t_amount').value) || 0;
+          const msg = el('#msgTransaction'); clearMsg(msg);
+          if(!id||!sender||!receiver){ showMsg(msg,'id, sender and receiver required','danger'); return; }
+
+          // client-side banned check
+          if(isAccountBanned(sender)){ showMsg(msg, `Sender account ${sender} is banned and cannot send transactions`, 'danger'); return; }
+          if(isAccountBanned(receiver)){ showMsg(msg, `Receiver account ${receiver} is banned and cannot receive transactions`, 'danger'); return; }
+
+          try{
+            const res = await fetch(API + '/transaction', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ id, sender, receiver, amount }) });
+            if(!res.ok){
+              const t = await res.text();
+              showMsg(msg, `Error: ${res.status} ${t}`, 'danger');
+              return;
+            }
+            showMsg(msg,'Transaction added','success');
+            newForm.reset();
+            await loadTransactions(); await loadAll();
+          }catch(err){ showMsg(msg,'Network: '+err.message,'danger'); }
+        });
+      })();
+
+      // BAN account control
+      el('#banAccountBtn').addEventListener('click', async ()=> {
+        const accountId = el('#banAccountId').value.trim();
+        const reason = el('#banReason').value.trim();
+        if(!accountId) return alert('Enter an account id to ban');
+        try{
+          const res = await fetch(API + '/ban/account', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ account_id: accountId, reason })
+          });
+          const json = await res.json();
+          if(!res.ok) return alert('Error: ' + (json.error || JSON.stringify(json)));
+          alert(`Banned account ${accountId}`);
+          el('#banAccountId').value=''; el('#banReason').value='';
+          await loadAccounts();
+          if(el('#bannedPanel').style.display==='block') loadBannedAccounts();
+        }catch(err){ alert('Network: '+err.message); }
+      });
+
+      // Banned accounts panel loader
+      async function loadBannedAccounts(){
+        const body = el('#bannedTableBody');
+        body.innerHTML = `<tr><td colspan="4" class="small-muted">Loading...</td></tr>`;
+        try{
+          const res = await fetch(API + '/banned_accounts');
+          let rows = [];
+          if(res.ok){
+            rows = await res.json();
+          } else {
+            console.warn('banned_accounts returned', res.status);
+          }
+
+          // If server returned nothing, fall back to accountsCache (client-side ban info)
+          if(!Array.isArray(rows) || rows.length === 0){
+            const fallback = accountsCache.filter(a => Number(a.banned) === 1);
+            rows = fallback.map(a => ({ account_id: a.account_id, reason: a.ban_reason || '', created_at: a.ban_created_at || '' }));
+          }
+
+          if(!Array.isArray(rows) || rows.length === 0){
+            body.innerHTML = `<tr><td colspan="4" class="small-muted">No banned accounts</td></tr>`;
+            return;
+          }
+
+          body.innerHTML = rows.map(r=>`<tr>
+            <td>${safe(r.account_id)}</td>
+            <td>${safe(r.reason || '')}</td>
+            <td>${safe(r.created_at || '')}</td>
+            <td><button class="btn btn-sm btn-outline-danger" onclick="unbanAccount('${safe(r.account_id)}')">Unban</button></td>
+          </tr>`).join('');
+        }catch(err){
+          console.error(err);
+          body.innerHTML = `<tr><td colspan="4" class="text-danger">Error: ${safe(err.message || String(err))}</td></tr>`;
+        }
+      }
+
+      el('#viewBannedBtn').addEventListener('click', async ()=> {
+        // ensure dashboard is visible so the panel is shown in context
+        showPage('dashboard');
+        const panel = el('#bannedPanel');
+        if(panel.style.display === 'none' || panel.style.display === '') {
+          panel.style.display = 'block';
+          await loadBannedAccounts();
+        } else {
+          panel.style.display = 'none';
+        }
+      });
+
+      // unban handler
+      async function unbanAccount(accountId){
+        if(!confirm(`Unban account "${accountId}"?`)) return;
+        try{
+          const res = await fetch(API + '/unban/account', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ account_id: accountId })
+          });
+          const json = await res.json();
+          if(!res.ok) return alert('Error: ' + (json.error || JSON.stringify(json)));
+          alert(`Unbanned ${accountId}`);
+          await loadAccounts();
+          loadBannedAccounts();
+        }catch(err){ alert('Network: '+err.message); }
+      }
+      window.unbanAccount = unbanAccount;
+
+      // ensure transaction submit uses isAccountBanned check
+      // replace earlier checks: if(isAccountBanned(sender)) ... if(isAccountBanned(receiver)) ...
+      // The explicit duplicate submit listener was removed (attachTransactionHandler provides a single handler).
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  </body>
+</html>
